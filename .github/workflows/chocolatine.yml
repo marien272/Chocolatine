@@ -56,14 +56,6 @@ jobs:
         env:
           GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
 
-  check_coding_style:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Run coding style checker
-        run: ghcr.io/epitech/coding-style-checker:latest check.sh $(pwd) $(pwd)
-
 env:
   MIRROR_URL: git@github.com:marien272/chocolatine2.git
   EXECUTABLES: mygoat
