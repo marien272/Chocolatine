@@ -2,60 +2,80 @@ name: Chocolatine Workflow
 
 on:
   push:
-    branches:
-      - '*'
+    branches-ignore:
+      - 'ga-ignore-*'
+      - 'mirror-repo'
   pull_request:
-    branches:
-      - '*'
+    branches-ignore:
+      - 'ga-ignore-*'
+      - 'mirror-repo'
+
+env:
+  MIRROR_URL: "git@github.com:marien272/chocolatine2.git"
+  EXECUTABLES: "mygoat"
+  GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
 
 jobs:
   check_coding_style:
+    name: Check Coding Style
     runs-on: ubuntu-latest
+    if: github.repository != 'mirror-repo'
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v2
-      - name: Run coding style checker
-        run: ghcr.io/epitech/coding-style-checker:latest check.sh $(pwd) $(pwd)
+      
+      - name: Run Coding Style Checker
+        run: |
+          docker run --rm -v $(pwd):/workspace ghcr.io/epitech/coding-style-checker:latest check.sh $(pwd) $(pwd)
 
   check_program_compilation:
-    runs-on: ubuntu-latest
+    name: Check Program Compilation
+    runs-on: epitechcontent/epitest-docker
+    if: github.repository != 'mirror-repo'
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v2
-      - name: Compile program
+
+      - name: Run Make
         run: make
-      - name: Clean up
+        timeout-minutes: 2
+
+      - name: Clean Repository
         run: make clean
-      - name: Verify executables
+
+      - name: Verify Executables
         run: |
-          for executable in $(echo $EXECUTABLES | tr "," "\n")
-          do
-            if [ ! -x "$executable" ]; then
-              echo "Executable $executable not found or not executable"
+          IFS=',' read -ra EXECS <<< "$EXECUTABLES"
+          for exec in "${EXECS[@]}"; do
+            if [ ! -x "$exec" ]; then
+              echo "Executable $exec is missing or not executable"
               exit 1
             fi
           done
 
   run_tests:
-    runs-on: ubuntu-latest
+    name: Run Tests
+    runs-on: epitechcontent/epitest-docker
+    if: github.repository != 'mirror-repo'
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v2
-      - name: Run tests
+
+      - name: Run Tests
         run: make tests_run
+        timeout-minutes: 2
 
   push_to_mirror:
+    name: Push to Mirror Repository
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.repository != "${{ secrets.MIRROR_URL }}"
+    if: github.event_name == 'push'
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v2
-      - name: Push to mirror
-        run: |
-          git push $MIRROR_URL
-        env:
-          GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-
-env:
-  MIRROR_URL: git@github.com:marien272/chocolatine2.git
-  EXECUTABLES: mygoat
+      
+      - name: Push to Mirror
+        uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          mirror_url: ${{ env.MIRROR_URL }}
+          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+          
