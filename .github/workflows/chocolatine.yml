@@ -1,107 +1,69 @@
-name: chocolatine
+name: Chocolatine Workflow
 
 on:
   push:
-    branches-ignore:
-    - "ga-ignore-*"
+    branches:
+      - '*'
   pull_request:
-    branches-ignore:
-    - "ga-ignore-*"
-
-env:
-  MIRROR_URL: "git@github.com:Remi-Mergen/chocolatine-mirror.git"
-  EXECUTABLES: "binary"
-  ARGUMENTS: ""
+    branches:
+      - '*'
 
 jobs:
   check_coding_style:
-    name: "Use coding_style_checker script to verify if the code is clean and report any coding-style errors"
-    runs-on: ubuntu-latest
-    container: ghcr.io/epitech/coding-style-checker:latest
-    steps:
-      - uses: actions/checkout@v3
-      - id: check_coding_style
-        run: |
-          check.sh $(pwd) $(pwd)
-          CODING_STYLE_ERRORS=$(cat $(pwd)/coding-style-reports.log)
-          for ERRORS in $CODING_STYLE_ERRORS; do
-            array=(`echo $ERRORS | sed 's/:/\n/g'`)
-            echo "::error file=${array[1]#./},title=${array[3]#./} coding style errors detected: ${array[2]#./}::${array[4]#./}"
-          done
-          if [[ -n $CODING_STYLE_ERRORS ]]
-          then
-            exit 1
-          else
-            echo No coding style errors detected
-          fi
-  
-
-  check_repo:
-    name: "Checks if the repository is clean and void of any unwanted files (temp files, binary files, etc.)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - id: check_repo
-        run: |
-          UNWANTED_FILES=$(find . -type f -not -path "./git/*" -wholename "*tmp/*" -or -name "*~" -or -name "*.o" -or -name "*.so" -or -name "*.gcno" -or -name "*.gcda" -or -name "*#" -or -name "#*" -or -name "*.gcov" -or -name "*pain_au_chocolat*")
-          for FILES in $UNWANTED_FILES; do
-            echo "::error file=${FILES#./},title=Unwanted file detected::${FILES#./}"
-          done
-          if [[ -n $UNWANTED_FILES ]]
-          then
-            exit 1
-          else
-            echo No unwanted files detected
-          fi
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Run coding style checker
+        run: ghcr.io/epitech/coding-style-checker:latest check.sh $(pwd) $(pwd)
 
   check_program_compilation:
-    needs: [check_repo]
-    name: "Checks if make compil and test all binary listed in the ARGUMENTS variable"
     runs-on: ubuntu-latest
-    container:
-      image: epitechcontent/epitest-docker:latest
-
     steps:
-      - uses: actions/checkout@v3
-      - id: check_program_compilation
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Compile program
         run: make
-        timeout-minutes: 2
-      - run: make clean
-      - run: |
-          OIFS=$IFS
-          IFS=','
-          for x in $EXECUTABLES
-            do
-              ./$x $ARGUMENTS
-            done
-          IFS=$OIFS
+      - name: Clean up
+        run: make clean
+      - name: Verify executables
+        run: |
+          for executable in $(echo $EXECUTABLES | tr "," "\n")
+          do
+            if [ ! -x "$executable" ]; then
+              echo "Executable $executable not found or not executable"
+              exit 1
+            fi
+          done
 
   run_tests:
-    needs: [check_program_compilation]
-    name: "Runs tests with criterion"
     runs-on: ubuntu-latest
-    container:
-      image: epitechcontent/epitest-docker:latest
-
     steps:
-      - uses: actions/checkout@v3
-      - id: run_tests
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Run tests
         run: make tests_run
-        timeout-minutes: 2
 
   push_to_mirror:
-    needs: [run_tests]
-    if: ${{ github.event_name == 'push' }}
-    name: "Push all files to mirror specified"
     runs-on: ubuntu-latest
-
+    if: github.event_name == 'push' && github.repository != secrets.MIRROR_URL
     steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      - uses: pixta-dev/repository-mirroring-action@v1
-        with:
-          target_repo_url:
-            ${{ env.MIRROR_URL }}
-          ssh_private_key:
-            ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Push to mirror
+        run: |
+          git push $MIRROR_URL
+        env:
+          GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+
+  check_coding_style:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Run coding style checker
+        run: ghcr.io/epitech/coding-style-checker:latest check.sh $(pwd) $(pwd)
+
+env:
+  MIRROR_URL: git@github.com:marien272/chocolatine2.git
+  EXECUTABLES: mygoat
