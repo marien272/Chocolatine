@@ -1,81 +1,66 @@
-name: Chocolatine Workflow
+name: Chocolatine CI/CD
 
 on:
   push:
     branches-ignore:
-      - 'ga-ignore-*'
-      - 'mirror-repo'
+      - "ga-ignore-"
   pull_request:
     branches-ignore:
-      - 'ga-ignore-*'
-      - 'mirror-repo'
-
-env:
-  MIRROR_URL: "git@github.com:marien272/chocolatine2.git"
-  EXECUTABLES: "mygoat"
-  GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+      - "ga-ignore-"
 
 jobs:
-  check_coding_style:
-    name: Check Coding Style
+  check_and_build:
     runs-on: ubuntu-latest
-    if: github.repository != 'mirror-repo'
+    
     steps:
-      - name: Checkout Repository
+      - name: Checkout du dépôt
         uses: actions/checkout@v2
-      
-      - name: Run Coding Style Checker
+
+      - name: Vérification du style de codage
+        run: check.sh . /tmp
+
+      - name: Créer des annotations pour les erreurs de style de codage
         run: |
-          docker run --rm -v $(pwd):/workspace ghcr.io/epitech/coding-style-checker:latest check.sh $(pwd) $(pwd)
+          input=/tmp/coding-style-reports.log
+          while IFS= read -r -a line; do
+            fields=($(printf "%s" "$line"|cut -d':' --output-delimiter=' ' -f1-))
+            echo "::error title=${fields[2]} erreur de style de codage,file=${fields[0]},line=${fields[1]}::${fields[3]}"
+          done < $input
 
-  check_program_compilation:
-    name: Check Program Compilation
-    runs-on: epitechcontent/epitest-docker
-    if: github.repository != 'mirror-repo'
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
+      - name: Rapport du résultat
+        run: |
+          NB_ERROR=$(cat /tmp/coding-style-reports.log | wc -l)
+          if [ $NB_ERROR -gt 0 ]; then
+            exit 1
+          fi
 
-      - name: Run Make
+      - name: Compilation du programme
         run: make
-        timeout-minutes: 2
 
-      - name: Clean Repository
+      - name: Nettoyage du programme
         run: make clean
 
-      - name: Verify Executables
+      - name: Vérification de l'existence et de l'exécution des fichiers
         run: |
-          IFS=',' read -ra EXECS <<< "$EXECUTABLES"
-          for exec in "${EXECS[@]}"; do
-            if [ ! -x "$exec" ]; then
-              echo "Executable $exec is missing or not executable"
+          for file in ${{ vars.EXECUTABLES }};do
+             if [ ! -x "$file" ]; then
+              echo "Le fichier $file n'existe pas ou n'est pas exécutable"
               exit 1
             fi
           done
 
-  run_tests:
-    name: Run Tests
-    runs-on: epitechcontent/epitest-docker
-    if: github.repository != 'mirror-repo'
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
-
-      - name: Run Tests
+      - name: Exécution des tests
         run: make tests_run
-        timeout-minutes: 2
 
   push_to_mirror:
-    name: Push to Mirror Repository
     runs-on: ubuntu-latest
+    needs: check_and_build
     if: github.event_name == 'push'
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
-      
-      - name: Push to Mirror
-        uses: pixta-dev/repository-mirroring-action@v1
+      - uses: actions/checkout@v3
         with:
-          mirror_url: ${{ env.MIRROR_URL }}
+          fetch-depth: 0
+      - uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          target_repo_url: ${{ vars.MIRROR_URL }}
           ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-          
